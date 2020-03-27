@@ -60,7 +60,34 @@ class NodeTransSession extends EventEmitter {
     Array.prototype.push.apply(argv, this.conf.vcParam);
     Array.prototype.push.apply(argv, ['-c:a', ac]);
     Array.prototype.push.apply(argv, this.conf.acParam);
-    Array.prototype.push.apply(argv, ['-f', 'tee', '-map', '0:a?', '-map', '0:v?', mapStr]);
+    let vp9OuPath = '';
+    if (!this.conf.dashvp9) {
+      Array.prototype.push.apply(argv, ['-f', 'tee', '-map', '0:a?', '-map', '0:v?', mapStr]);
+    } else {
+      /** fix for dash vp9 test **/
+      const dashFileName = 'index.mpd';
+      // h264 dash
+      Array.prototype.push.apply(argv, this.conf.dashParam);
+      Array.prototype.push.apply(argv, ['-f', 'dash', `${ouPath}/${dashFileName}`]);
+      // vp9 dash
+      const vp9Parameters = {
+        '8000': { speed: 5, threads: 8, tileColumns: 2, bV: 8000 * 0.6 },
+        '6000': { speed: 5, threads: 8, tileColumns: 2, bV: 6000 * 0.6 },
+        '4000': { speed: 5, threads: 8, tileColumns: 2, bV: 4000 * 0.6 },
+        '1200': { speed: 6, threads: 4, tileColumns: 1, bV: 1200 * 0.6 },
+        '500':  { speed: 6, threads: 4, tileColumns: 1, bV: 500 * 0.6 },
+      };
+      const inBitrate = this.conf.streamName.split('.').pop();
+      const parameters = vp9Parameters[inBitrate] || vp9Parameters['4000'];
+      Array.prototype.push.apply(argv, ['-r', 30, '-g', 90, '-quality', 'realtime', '-speed', parameters.speed, '-threads', parameters.threads, '-row-mt', 1, '-tile-columns', parameters.tileColumns, '-frame-parallel', 1, '-qmin', 4, '-qmax', 48, '-b:v', `${parameters.bV}k`]);
+      Array.prototype.push.apply(argv, ['-c:v', 'vp9', '-c:a', 'opus', '-strict', -2]);  // The encoder 'opus' is experimental but experimental codecs are not enabled, add '-strict -2' if you want to use it.
+      Array.prototype.push.apply(argv, this.conf.dashParam);
+      vp9OuPath = `${this.conf.mediaroot}/${this.conf.streamApp}/${this.conf.streamName}_vp9`;
+      mkdirp.sync(vp9OuPath);
+      Array.prototype.push.apply(argv, ['-f', 'dash', `${vp9OuPath}/${dashFileName}`]);
+      // remove nobuffer for vp9 encoder
+      argv.splice(1, 2);
+    }
     argv = argv.filter((n) => { return n }); //去空
     this.ffmpeg_exec = spawn(this.conf.ffmpeg, argv);
     this.ffmpeg_exec.on('error', (e) => {
@@ -78,19 +105,32 @@ class NodeTransSession extends EventEmitter {
     this.ffmpeg_exec.on('close', (code) => {
       Logger.log('[Transmuxing end] ' + this.conf.streamPath);
       this.emit('end');
-      fs.readdir(ouPath, function (err, files) {
-        if (!err) {
-          files.forEach((filename) => {
-            if (filename.endsWith('.ts')
+
+      function unlinkFiles(path, files) {
+        files.forEach((filename) => {
+          if (filename.endsWith('.ts')
               || filename.endsWith('.m3u8')
               || filename.endsWith('.mpd')
               || filename.endsWith('.m4s')
+              || filename.endsWith('.webm')
               || filename.endsWith('.tmp')) {
-              fs.unlinkSync(ouPath + '/' + filename);
-            }
-          })
+            fs.unlinkSync(path + '/' + filename);
+          }
+        })
+      }
+
+      fs.readdir(ouPath, function (err, files) {
+        if (!err) {
+          unlinkFiles(ouPath, files);
         }
       });
+      if (vp9OuPath) {
+        fs.readdir(vp9OuPath, function (err, files) {
+          if (!err) {
+            unlinkFiles(vp9OuPath, files);
+          }
+        });
+      }
     });
   }
 
