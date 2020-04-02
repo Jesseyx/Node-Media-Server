@@ -23,6 +23,6 @@ COPY . .
 
 RUN sed -i.bak '32 s|E:\\\\programs\\\\ffmpeg-20190629-89b9690-win64-static\\\\bin\\\\ffmpeg.exe|/usr/src/app/ffmpeg-4.2.2-amd64-static/ffmpeg|' app.vp9.js
 
-EXPOSE 1935 8000
+EXPOSE 8081 8080 443
 
 CMD [ "node", "app.vp9.js" ]
