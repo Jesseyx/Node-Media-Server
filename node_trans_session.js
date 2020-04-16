@@ -11,6 +11,8 @@ const dateFormat = require('dateformat');
 const mkdirp = require('mkdirp');
 const fs = require('fs');
 
+const { getVp9Parameters } = require('./node_vp9_utils');
+
 class NodeTransSession extends EventEmitter {
   constructor(conf) {
     super();
@@ -70,23 +72,16 @@ class NodeTransSession extends EventEmitter {
       Array.prototype.push.apply(argv, this.conf.dashParam);
       Array.prototype.push.apply(argv, ['-f', 'dash', `${ouPath}/${dashFileName}`]);
       // vp9 dash
-      const vp9Parameters = {
-        '8000': { speed: 5, threads: 8, tileColumns: 2, bV: 8000 * 0.6 },
-        '6000': { speed: 5, threads: 8, tileColumns: 2, bV: 6000 * 0.6 },
-        '4000': { speed: 5, threads: 8, tileColumns: 2, bV: 4000 * 0.6 },
-        '1200': { speed: 6, threads: 4, tileColumns: 1, bV: 1200 * 0.6 },
-        '500':  { speed: 6, threads: 4, tileColumns: 1, bV: 500 * 0.6 },
-      };
-      const inBitrate = this.conf.streamName.split('.').pop();
-      const parameters = vp9Parameters[inBitrate] || vp9Parameters['4000'];
-      Array.prototype.push.apply(argv, ['-r', 30, '-g', 90, '-quality', 'realtime', '-speed', parameters.speed, '-threads', parameters.threads, '-row-mt', 1, '-tile-columns', parameters.tileColumns, '-frame-parallel', 1, '-qmin', 4, '-qmax', 48, '-b:v', `${parameters.bV}k`]);
-      Array.prototype.push.apply(argv, ['-c:v', 'vp9', '-c:a', 'opus', '-strict', -2]);  // The encoder 'opus' is experimental but experimental codecs are not enabled, add '-strict -2' if you want to use it.
-      Array.prototype.push.apply(argv, this.conf.dashParam);
-      vp9OuPath = `${this.conf.mediaroot}/${this.conf.streamApp}/${this.conf.streamName}_vp9`;
-      mkdirp.sync(vp9OuPath);
-      Array.prototype.push.apply(argv, ['-f', 'dash', `${vp9OuPath}/${dashFileName}`]);
-      // remove nobuffer for vp9 encoder
-      argv.splice(1, 2);
+      const vp9Parameters = getVp9Parameters(this.conf.args);
+      if (vp9Parameters) {
+        Array.prototype.push.apply(argv, vp9Parameters);
+        Array.prototype.push.apply(argv, this.conf.dashParam);
+        vp9OuPath = `${ouPath}_vp9`;
+        mkdirp.sync(vp9OuPath);
+        Array.prototype.push.apply(argv, ['-f', 'dash', `${vp9OuPath}/${dashFileName}`]);
+        // remove nobuffer for vp9 encoder
+        argv.splice(1, 2);
+      }
     }
     argv = argv.filter((n) => { return n }); //去空
     this.ffmpeg_exec = spawn(this.conf.ffmpeg, argv);
